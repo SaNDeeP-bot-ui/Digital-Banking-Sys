@@ -1,0 +1,109 @@
+#include <iomanip>
+#include <iostream>
+#include <string>
+
+#include "AccountFactory.h"
+#include "AccountStore.h"
+#include "Exceptions.h"
+
+namespace {
+
+void printHeader(const std::string& title) {
+    std::cout << "\n============================================================\n";
+    std::cout << " " << title << "\n";
+    std::cout << "============================================================\n";
+}
+
+}  // namespace
+
+int main() {
+    std::cout << std::fixed << std::setprecision(2);
+
+    printHeader("In-Memory Digital Banking System");
+
+    AccountStore accountStore;
+
+    // --------------------------------------------------------------
+    // Step 1: Use AccountFactory to create one Savings and one
+    // Checking account, then insert both into the AccountStore (BST).
+    // --------------------------------------------------------------
+    printHeader("Step 1: Creating accounts via AccountFactory");
+    {
+        auto alice = AccountFactory::createAccount(AccountType::Savings, "ACC-ALICE-001",
+                                                     "Alice Johnson", 1500.00);
+        std::cout << "Created " << alice->getAccountType() << " account for "
+                   << alice->getAccountHolder() << " [" << alice->getAccountNumber()
+                   << "] -- opening balance: $" << alice->getBalance() << "\n";
+        accountStore.addAccount(std::move(alice));
+
+        auto bob = AccountFactory::createAccount(AccountType::Checking, "ACC-BOB-002",
+                                                   "Bob Smith", 100.00);
+        std::cout << "Created " << bob->getAccountType() << " account for "
+                   << bob->getAccountHolder() << " [" << bob->getAccountNumber()
+                   << "] -- opening balance: $" << bob->getBalance() << "\n";
+        accountStore.addAccount(std::move(bob));
+    }
+    accountStore.printAllAccounts();
+
+    // --------------------------------------------------------------
+    // Step 2: Successful transfer of $300 from Alice to Bob.
+    // --------------------------------------------------------------
+    printHeader("Step 2: Transfer $300 from Alice to Bob");
+    try {
+        accountStore.transferFunds("ACC-ALICE-001", "ACC-BOB-002", 300.00);
+        std::cout << "Transfer succeeded: $300.00 moved from ACC-ALICE-001 to ACC-BOB-002.\n";
+    } catch (const std::exception& e) {
+        std::cout << "Transfer failed: " << e.what() << "\n";
+    }
+    accountStore.printAllAccounts();
+
+    // --------------------------------------------------------------
+    // Step 3: Alice tries to withdraw $800 -- would leave her balance
+    // at $1200 - $800 = $400, below the $500 Savings minimum.
+    // --------------------------------------------------------------
+    printHeader("Step 3: Alice attempts to withdraw $800 (breaches $500 Savings minimum)");
+    try {
+        accountStore.findAccount("ACC-ALICE-001")->withdraw(800.00);
+        std::cout << "Withdrawal succeeded (unexpected).\n";
+    } catch (const InsufficientFundsError& e) {
+        std::cout << "Caught InsufficientFundsError: " << e.what() << "\n";
+    }
+
+    // --------------------------------------------------------------
+    // Step 4: Bob tries to withdraw $700 -- would leave his balance at
+    // $400 - $700 = -$300, below the -$200 Checking overdraft limit.
+    // --------------------------------------------------------------
+    printHeader("Step 4: Bob attempts to withdraw $700 (breaches -$200 Checking overdraft limit)");
+    try {
+        accountStore.findAccount("ACC-BOB-002")->withdraw(700.00);
+        std::cout << "Withdrawal succeeded (unexpected).\n";
+    } catch (const InsufficientFundsError& e) {
+        std::cout << "Caught InsufficientFundsError: " << e.what() << "\n";
+    }
+
+    // --------------------------------------------------------------
+    // Bonus: demonstrate AccountNotFoundError from the BST lookup.
+    // --------------------------------------------------------------
+    printHeader("Step 5: Looking up a non-existent account");
+    try {
+        accountStore.findAccount("ACC-GHOST-999");
+    } catch (const AccountNotFoundError& e) {
+        std::cout << "Caught AccountNotFoundError: " << e.what() << "\n";
+    }
+
+    // --------------------------------------------------------------
+    // Step 6: Display both ledgers. Each should show exactly ONE
+    // entry -- the successful $300 Transfer -- proving the failed
+    // withdrawal attempts above were never written to the custom
+    // doubly linked list.
+    // --------------------------------------------------------------
+    printHeader("Step 6: Ledger history (proves only the successful transfer was recorded)");
+    accountStore.findAccount("ACC-ALICE-001")->displayLedger();
+    accountStore.findAccount("ACC-BOB-002")->displayLedger();
+
+    printHeader("Final account balances");
+    accountStore.printAllAccounts();
+
+    std::cout << "\nProgram completed successfully.\n";
+    return 0;
+}
